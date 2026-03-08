@@ -1,0 +1,12 @@
+node_modules/
+.node_modules/
+focusflow-server/
+android-app-blocker-source/
+migrated_prompt_history/
+WINDOWS_AGENT_SETUP.js
+BACKEND_INSTRUCTIONS.md
+BEGINNER_STEP_BY_STEP.md
+DEPLOYMENT_PLAN.md
+FULL_IMPLEMENTATION_GUIDE.md
+*.iml
+.idea/

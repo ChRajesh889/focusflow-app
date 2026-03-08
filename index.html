@@ -1,0 +1,69 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FocusFlow AI</title>
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'brand-dark': '#111827',
+                        'brand-secondary': '#1F2937',
+                        'brand-light': '#F9FAFB',
+                        'brand-accent': '#4F46E5',
+                        'brand-accent-hover': '#4338CA',
+                    },
+                    keyframes: {
+                        'fade-in-down': {
+                            '0%': {
+                                opacity: '0',
+                                transform: 'translateY(-20px)'
+                            },
+                            '100%': {
+                                opacity: '1',
+                                transform: 'translateY(0)'
+                            },
+                        },
+                        'fade-in': {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        }
+                    },
+                    animation: {
+                        'fade-in-down': 'fade-in-down 0.5s ease-out forwards',
+                        'fade-in': 'fade-in 0.5s ease-out forwards',
+                    }
+                },
+            },
+        }
+    </script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "recharts": "https://aistudiocdn.com/recharts@^3.3.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.28.0",
+    "socket.io-client": "https://cdn.socket.io/4.7.2/socket.io.esm.min.js",
+    "http": "https://esm.sh/http@^0.0.1-security",
+    "express": "https://esm.sh/express@^5.2.1",
+    "cors": "https://esm.sh/cors@^2.8.6",
+    "pg": "https://esm.sh/pg@^8.18.0",
+    "dotenv": "https://esm.sh/dotenv@^17.2.3",
+    "socket.io": "https://esm.sh/socket.io@^4.8.3"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-brand-dark text-brand-light">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+</body>
+</html>

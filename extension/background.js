@@ -82,16 +82,21 @@ const DISTRACTION_SITES = [
 function checkAndBlockTab(tabId, url) {
     const isDistraction = DISTRACTION_SITES.some(site => url.includes(site));
 
-    // For the first version, we'll demonstrate "Manual Blocking" 
-    // until the Socket.io client for Service Workers is fully ready.
     if (isDistraction) {
-        // If it's a known distraction, we redirect to the dashboard's block page
-        // or just close it to be "forceful"
         const blockUrl = `https://focusflow-app-two.vercel.app/`;
 
-        // Optional: Only block if we have a signal from backend
-        // For now, let's just close to show the power of the extension
-        chrome.tabs.update(tabId, { url: blockUrl });
-        console.log("Blocked distraction:", url);
+        // Search for an existing FocusFlow tab to reuse it
+        chrome.tabs.query({ url: "*://focusflow-app-two.vercel.app/*" }, (tabs) => {
+            if (tabs.length > 0) {
+                // Focus the existing dashboard and close this distraction tab
+                chrome.tabs.update(tabs[0].id, { active: true });
+                chrome.tabs.remove(tabId);
+                console.log("Redirected to existing dashboard and closed distraction:", url);
+            } else {
+                // No dashboard open: Update this tab to show the dashboard
+                chrome.tabs.update(tabId, { url: blockUrl });
+                console.log("No dashboard open, updated current tab to block page:", url);
+            }
+        });
     }
 }

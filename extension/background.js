@@ -3,7 +3,7 @@
 let blockedAppRules = [];
 let isFocusSessionActive = false;
 let backendUrl = "https://focusflow-server-wuud.onrender.com"; // Default, will sync from options/storage
-const USER_ID = "rajes_user_123"; // Logic to match dashboard
+const USER_ID = "demo_user_123"; // Matches Dashboard.tsx value
 
 // Initialize Alarm to periodically sync settings
 chrome.alarms.create("sync-settings", { periodInMinutes: 1 });

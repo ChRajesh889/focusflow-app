@@ -318,16 +318,22 @@ const Dashboard: React.FC<DashboardProps> = ({ isSoundEnabled, userProgress, onU
         return () => { socket.disconnect(); };
     }, [isFocusing, handleCloseAppTab]);
 
-    // Global Usage Watchdog: Proactively close tabs if limits are hit
+    // Global Watchdog: Periodically check if limits are exceeded and close tabs
     useEffect(() => {
-        Object.keys(appLimits).forEach(appId => {
-            const limitSecs = appLimits[appId] * 60;
-            const usageSecs = appUsage[appId] || 0;
-            if (limitSecs > 0 && usageSecs >= limitSecs) {
-                handleCloseAppTab(appId);
-            }
-        });
-    }, [appUsage, appLimits, handleCloseAppTab]);
+        const interval = setInterval(() => {
+            apps.forEach(app => {
+                const limitInSeconds = (appLimits[app.id] || 0) * 60;
+                const usage = appUsage[app.id] || 0;
+                const isBlockedByFocusSession = isFocusing && focusApps.includes(app.id);
+
+                if (isBlockedByFocusSession || (limitInSeconds > 0 && usage >= limitInSeconds)) {
+                    handleCloseAppTab(app.id); // Changed app to app.id
+                }
+            });
+        }, 5000); // Check every 5 seconds as a fallback
+
+        return () => clearInterval(interval);
+    }, [apps, appLimits, appUsage, isFocusing, focusApps, handleCloseAppTab]);
 
     const handleSetAppLimit = (appId: string, limit: number) => {
         setAppLimits(prev => ({ ...prev, [appId]: limit }));

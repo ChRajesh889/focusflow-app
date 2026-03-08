@@ -40,6 +40,7 @@ const UsagePage: React.FC<UsagePageProps> = ({
     const hasLimit = timeLimitSeconds > 0;
     const [isTimeUp, setIsTimeUp] = useState(false);
     const [blockReason, setBlockReason] = useState<'limit' | 'focus'>('limit');
+    const [justLaunched, setJustLaunched] = useState(false);
 
     const [displayTime, setDisplayTime] = useState(
         hasLimit ? Math.max(0, timeLimitSeconds - timeUsedSeconds) : 0
@@ -137,10 +138,16 @@ const UsagePage: React.FC<UsagePageProps> = ({
 
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8">
                     <button
-                        onClick={() => onLaunchApp ? onLaunchApp() : launchApp(app)}
-                        className="w-full max-w-xs py-4 px-8 text-lg font-bold text-white bg-brand-accent hover:bg-brand-accent-hover rounded-lg transition duration-300 shadow-lg flex items-center justify-center"
+                        onClick={() => {
+                            if (onLaunchApp) onLaunchApp();
+                            else launchApp(app);
+                            setJustLaunched(true);
+                            setTimeout(() => setJustLaunched(false), 3000);
+                        }}
+                        disabled={justLaunched}
+                        className={`w-full max-w-xs py-4 px-8 text-lg font-bold text-white rounded-lg transition duration-300 shadow-lg flex items-center justify-center ${justLaunched ? 'bg-green-600 hover:bg-green-700 cursor-default' : 'bg-brand-accent hover:bg-brand-accent-hover'}`}
                     >
-                        Go to {app.name}
+                        {justLaunched ? `Opened ${app.name} ↗` : `Go to ${app.name}`}
                     </button>
                     <button
                         onClick={handleLeave}

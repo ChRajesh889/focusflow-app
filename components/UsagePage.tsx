@@ -110,8 +110,8 @@ const UsagePage: React.FC<UsagePageProps> = ({
         onLeave(timeSpentInSessionRef.current); // Keep the argument for compatibility if needed, but Dashboard now ignores it
     };
 
-    if (isTimeUp) {
-        return <BlockPage appName={app.name} appId={app.id} onReturn={handleLeave} reason={blockReason} backendUrl={backendUrl} userId={userId} />;
+    if (isTimeUp || isBlockedByFocus) {
+        return <BlockPage appName={app.name} appId={app.id} onReturn={handleLeave} reason={isBlockedByFocus ? 'focus' : blockReason} backendUrl={backendUrl} userId={userId} />;
     }
 
     return (

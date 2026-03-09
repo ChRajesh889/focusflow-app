@@ -11,12 +11,15 @@ let syncData = {
 
 // 1. Load initial data from storage
 chrome.storage.local.get(['syncData'], (result) => {
-    if (result.syncData) {
+    if (chrome.runtime.lastError) {
+        console.warn("[Watchdog] Storage access error:", chrome.runtime.lastError);
+    }
+    if (result && result.syncData) {
         syncData = result.syncData;
         console.log("[Watchdog] Restored syncData from storage:", syncData);
     }
     // Initial sync after loading storage
-    syncWithBackend();
+    syncWithBackend().catch(() => { }); // Catch-all to prevent unhandled promise rejection
 });
 
 // Watchdog: Check ALL tabs every 5 seconds

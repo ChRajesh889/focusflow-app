@@ -87,18 +87,19 @@ function runWatchdog() {
 }
 
 // 2. Tab Monitoring (Real-time)
+// Block as soon as the URL is known (loading status) for instant enforcement
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (tab.url && changeInfo.status === 'complete') {
+    if (tab.url) {
         checkAndBlockTab(tabId, tab.url);
     }
 });
 
 const APP_SITES = {
-    "twitter": ["x.com", "twitter.com", "t.co", "abs.twimg.com"],
-    "instagram": ["instagram.com", "instagr.am", "cdninstagram.com"],
-    "facebook": ["facebook.com", "fb.com", "messenger.com", "facebook.net", "fbcdn.net"],
-    "youtube": ["youtube.com", "youtu.be", "m.youtube.com", "googlevideo.com", "youtube-nocookie.com"],
-    "whatsapp": ["whatsapp.com", "whatsapp.net", "web.whatsapp.com"],
+    "twitter": ["x.com", "twitter.com", "t.co", "abs.twimg.com", "twimg.com"],
+    "instagram": ["instagram.com", "instagr.am", "cdninstagram.com", "instagram.net"],
+    "facebook": ["facebook.com", "fb.com", "messenger.com", "facebook.net", "fbcdn.net", "m.facebook.com", "web.facebook.com", "fb.me", "fb.watch"],
+    "youtube": ["youtube.com", "youtu.be", "m.youtube.com", "googlevideo.com", "youtube-nocookie.com", "ytimg.com", "youtubei.googleapis.com"],
+    "whatsapp": ["whatsapp.com", "whatsapp.net", "web.whatsapp.com", "wa.me"],
     "snapchat": ["snapchat.com", "snap.com", "sc-static.net"],
     "tiktok": ["tiktok.com", "vimeo.com", "tiktokv.com"],
     "reddit": ["reddit.com", "reddit.app.link", "redd.it", "redditmedia.com", "redditstatic.com"]

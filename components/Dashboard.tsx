@@ -277,12 +277,12 @@ const Dashboard: React.FC<DashboardProps> = ({ isSoundEnabled, userProgress, onU
             }))
         };
 
-        // Dispatch a custom event that our extension's content script listens for
-        const event = new CustomEvent('focusflow-force-sync', {
-            detail: syncDataPayload
-        });
-        window.dispatchEvent(event);
-        console.log("[FocusFlow] Dispatched sync signal with payload to extension", syncDataPayload);
+        // Post a message that our extension's content script listens for
+        window.postMessage({
+            type: 'focusflow-force-sync',
+            payload: syncDataPayload
+        }, "*");
+        console.log("[FocusFlow] Posted sync signal with payload to extension", syncDataPayload);
     }, [isFocusing, focusApps, appLimits, appUsage]);
 
     useIdleTimer({

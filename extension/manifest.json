@@ -11,7 +11,23 @@
     "host_permissions": [
         "https://*.onrender.com/*",
         "https://focusflow-app-two.vercel.app/*",
-        "http://localhost:3001/*"
+        "http://localhost:3001/*",
+        "<all_urls>"
+    ],
+    "externally_connectable": {
+        "matches": [
+            "https://focusflow-app-two.vercel.app/*"
+        ]
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://focusflow-app-two.vercel.app/*"
+            ],
+            "js": [
+                "content.js"
+            ]
+        }
     ],
     "background": {
         "service_worker": "background.js"

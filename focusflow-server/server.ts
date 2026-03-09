@@ -33,6 +33,10 @@ if (fs.existsSync(publicPath)) {
 app.use(express.static(publicPath));
 
 // --- REST API Endpoints ---
+app.get('/', (req, res) => {
+    res.status(200).send('FocusFlow Server is running and ready to accept connections.');
+});
+
 app.get('/api/limits/status/:userId', async (req, res) => {
     try {
         const { userId } = req.params;

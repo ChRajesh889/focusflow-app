@@ -137,15 +137,39 @@ function forceBlockTab(tabId, appId, reason) {
 
     // Use a clearer set of patterns for identifying the dashboard
     chrome.tabs.query({ url: "*://focusflow-app-two.vercel.app/*" }, (tabs) => {
+        if (chrome.runtime.lastError) return;
+
         if (tabs.length > 0) {
             const dashboardTab = tabs[0];
-            chrome.tabs.update(dashboardTab.id, { active: true });
-            chrome.windows.update(dashboardTab.windowId, { focused: true });
-            chrome.tabs.remove(tabId);
-            console.log(`[Watchdog] Closed ${appId} for ${reason} (Reflected to Dashboard)`);
+
+            // Focus the dashboard tab
+            chrome.tabs.update(dashboardTab.id, { active: true }, () => {
+                if (chrome.runtime.lastError) console.warn("[Watchdog] Failed to focus dashboard tab:", chrome.runtime.lastError.message);
+            });
+
+            // Focus the dashboard window
+            chrome.windows.update(dashboardTab.windowId, { focused: true }, () => {
+                if (chrome.runtime.lastError) console.warn("[Watchdog] Failed to focus dashboard window:", chrome.runtime.lastError.message);
+            });
+
+            // Close the distraction tab
+            chrome.tabs.remove(tabId, () => {
+                // It's common for this to fail if the tab was closed while we were processing
+                if (chrome.runtime.lastError) {
+                    console.info("[Watchdog] Tab already closed or couldn't be removed:", tabId);
+                } else {
+                    console.log(`[Watchdog] Closed ${appId} for ${reason} (Reflected to Dashboard)`);
+                }
+            });
         } else {
-            chrome.tabs.update(tabId, { url: blockUrl });
-            console.log(`[Watchdog] No dashboard open, reused tab for ${appId} (Reason: ${reason})`);
+            // No dashboard open: Redirect this tab to the dashboard
+            chrome.tabs.update(tabId, { url: blockUrl }, () => {
+                if (chrome.runtime.lastError) {
+                    console.info("[Watchdog] Failed to redirect tab (likely already closed):", tabId);
+                } else {
+                    console.log(`[Watchdog] No dashboard open, reused tab for ${appId} (Reason: ${reason})`);
+                }
+            });
         }
     });
 }

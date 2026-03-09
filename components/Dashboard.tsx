@@ -359,6 +359,19 @@ const Dashboard: React.FC<DashboardProps> = ({ isSoundEnabled, userProgress, onU
         return () => clearInterval(interval);
     }, [apps, appLimits, appUsage, isFocusing, focusApps, handleCloseAppTab]);
 
+    const handleToggleFocusApp = (appId: string) => {
+        if (isFocusing) return; // Can't change blocked apps during session
+        setFocusApps(prev => {
+            const newApps = prev.includes(appId)
+                ? prev.filter(id => id !== appId)
+                : [...prev, appId];
+
+            // Signal extension whenever blocked apps change
+            setTimeout(() => signalExtensionSync(), 0);
+            return newApps;
+        });
+    };
+
     const handleSetAppLimit = (appId: string, limit: number) => {
         setAppLimits(prev => ({ ...prev, [appId]: limit }));
         socketRef.current?.emit('limit:update', { appId, limitMins: limit });
@@ -532,7 +545,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isSoundEnabled, userProgress, onU
                             onSetLimit={handleSetAppLimit}
                             usage={appUsage}
                             focusApps={focusApps}
-                            onToggleFocusApp={id => setFocusApps(p => p.includes(id) ? p.filter(i => i !== id) : [...p, id])}
+                            onToggleFocusApp={handleToggleFocusApp}
                             isFocusing={isFocusing}
                             onUpdateAppCategory={(id, cat) => setApps(p => p.map(a => a.id === id ? { ...a, category: cat } : a))}
                             onOpenAddAppModal={() => setIsAddAppModalOpen(true)}

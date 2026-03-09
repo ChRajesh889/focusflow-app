@@ -5,7 +5,8 @@ let isFocusSessionActive = false;
 let backendUrl = "https://focusflow-server-wuud.onrender.com"; // Default, will sync from options/storage
 const USER_ID = "demo_user_123"; // Matches Dashboard.tsx value
 
-// Initialize Alarm to periodically sync settings
+// 1. High-Frequency Sync & Watchdog Setup
+// We use a shorter period for alarms (minimum 1 minute in some Chrome versions, so we use setInterval as fallback)
 chrome.alarms.create("sync-settings", { periodInMinutes: 1 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -14,20 +15,31 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     }
 });
 
+// Watchdog: Check ALL tabs every 5 seconds to catch existing distractions
+setInterval(() => {
+    runWatchdog();
+}, 5000);
+
+// Also sync every 30 seconds manually using setInterval
+setInterval(() => {
+    syncWithBackend();
+}, 30000);
+
 // Initial Sync
 chrome.runtime.onInstalled.addListener(() => {
     syncWithBackend();
 });
 
-// Listen for messages from popup
+// Listen for messages from popup or Dashboard
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'sync') {
+    if (request.action === 'sync' || request.action === 'force_check') {
         syncWithBackend().then(() => {
+            if (request.action === 'force_check') runWatchdog();
             sendResponse({ success: true });
         }).catch(err => {
             sendResponse({ success: false, error: err.message });
         });
-        return true; // keep channel open for async response
+        return true;
     }
 });
 
@@ -42,54 +54,68 @@ async function syncWithBackend() {
         const response = await fetch(`${backendUrl}/api/limits/status/${USER_ID}`);
         if (response.ok) {
             const data = await response.json();
-
-            // Update local state
             syncData = data;
 
-            // Update local storage so popup can show last sync time
             chrome.storage.local.set({
                 lastSyncStatus: 'success',
                 lastSyncTime: Date.now(),
                 syncData: data
             });
 
-            console.log("Synced data:", data);
+            console.log("[Watchdog] Sync Success:", data);
+
+            // Immediately run watchdog after sync if focus is active
+            if (data.focusActive || data.limits.some(l => l.limit_mins > 0)) {
+                runWatchdog();
+            }
         } else {
             throw new Error("HTTP Error " + response.status);
         }
     } catch (err) {
         chrome.storage.local.set({ lastSyncStatus: 'failed' });
-        console.error("Sync failed:", err);
-        throw err;
+        console.error("[Watchdog] Sync failed:", err);
     }
 }
 
-// Simple blocking by Tab Monitoring
+function runWatchdog() {
+    chrome.tabs.query({}, (tabs) => {
+        tabs.forEach(tab => {
+            if (tab.url) {
+                checkAndBlockTab(tab.id, tab.url);
+            }
+        });
+    });
+}
+
+// 2. Tab Monitoring (Real-time)
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.url) {
-        checkAndBlockTab(tabId, changeInfo.url);
+    // Check on every update if a focus session is active, not just URL changes
+    if (tab.url) {
+        checkAndBlockTab(tabId, tab.url);
     }
 });
 
 const APP_SITES = {
-    "instagram": ["instagram.com"],
-    "facebook": ["facebook.com"],
-    "twitter": ["twitter.com", "x.com"],
-    "youtube": ["youtube.com"],
-    "tiktok": ["tiktok.com"],
-    "snapchat": ["snapchat.com"],
-    "reddit": ["reddit.com"],
-    "whatsapp": ["whatsapp.com", "web.whatsapp.com"]
+    "twitter": ["x.com", "twitter.com", "t.co"],
+    "instagram": ["instagram.com", "instagr.am"],
+    "facebook": ["facebook.com", "fb.com", "messenger.com", "facebook.net"],
+    "youtube": ["youtube.com", "youtu.be", "m.youtube.com", "googlevideo.com"],
+    "whatsapp": ["whatsapp.com", "whatsapp.net", "web.whatsapp.com"],
+    "snapchat": ["snapchat.com", "snap.com"],
+    "tiktok": ["tiktok.com", "vimeo.com"],
+    "reddit": ["reddit.com", "reddit.app.link", "redd.it"]
 };
 
 function checkAndBlockTab(tabId, url) {
-    // 1. Never block the FocusFlow dashboard itself
-    if (url.includes("focusflow-app-two.vercel.app")) return;
+    if (!url) return;
+    const lowerUrl = url.toLowerCase();
 
-    // 2. Determine if the current URL belongs to a tracked app
+    // 1. Never block the FocusFlow dashboard or its variants
+    if (lowerUrl.includes("focusflow-app-two.vercel.app") || lowerUrl.includes("localhost")) return;
+
     let matchedAppId = null;
     for (const [appId, domains] of Object.entries(APP_SITES)) {
-        if (domains.some(domain => url.includes(domain))) {
+        if (domains.some(domain => lowerUrl.includes(domain.toLowerCase()))) {
             matchedAppId = appId;
             break;
         }
@@ -97,38 +123,29 @@ function checkAndBlockTab(tabId, url) {
 
     if (!matchedAppId) return;
 
-    // 3. Check Focus Session Blocking
     const isBlockedByFocus = syncData.focusActive && syncData.focusApps.includes(matchedAppId);
-
-    // 4. Check Daily Limit Blocking
     const appStatus = syncData.limits.find(l => l.app_id === matchedAppId);
     const isBlockedByLimit = appStatus && appStatus.limit_mins > 0 && (appStatus.usage_secs / 60) >= appStatus.limit_mins;
 
     if (isBlockedByFocus || isBlockedByLimit) {
-        const blockUrl = `https://focusflow-app-two.vercel.app/`;
-
-        // Search for an existing FocusFlow tab to reuse it
-        // We use a broad pattern to catch variations of the URL
-        chrome.tabs.query({ url: ["*://focusflow-app-two.vercel.app/*", "*://focusflow-app-two.vercel.app*"] }, (tabs) => {
-            if (tabs.length > 0) {
-                const dashboardTab = tabs[0];
-
-                // 1. Focus the tab in its window
-                chrome.tabs.update(dashboardTab.id, { active: true });
-
-                // 2. Focus the window itself so the user actually sees it
-                chrome.windows.update(dashboardTab.windowId, { focused: true });
-
-                // 3. Close the distraction tab
-                chrome.tabs.remove(tabId);
-
-                console.log(`[Extension] Redirected to existing dashboard (Reason: ${isBlockedByFocus ? 'Focus' : 'Limit'})`);
-            } else {
-                // No dashboard open: Redirect this tab to the dashboard
-                // This reuses the current tab instead of opening a new one
-                chrome.tabs.update(tabId, { url: blockUrl });
-                console.log(`[Extension] No dashboard open, reused current tab for ${matchedAppId}`);
-            }
-        });
+        forceBlockTab(tabId, matchedAppId, isBlockedByFocus ? 'Focus Session' : 'Daily Limit');
     }
+}
+
+function forceBlockTab(tabId, appId, reason) {
+    const blockUrl = `https://focusflow-app-two.vercel.app/`;
+
+    // Use a clearer set of patterns for identifying the dashboard
+    chrome.tabs.query({ url: "*://focusflow-app-two.vercel.app/*" }, (tabs) => {
+        if (tabs.length > 0) {
+            const dashboardTab = tabs[0];
+            chrome.tabs.update(dashboardTab.id, { active: true });
+            chrome.windows.update(dashboardTab.windowId, { focused: true });
+            chrome.tabs.remove(tabId);
+            console.log(`[Watchdog] Closed ${appId} for ${reason} (Reflected to Dashboard)`);
+        } else {
+            chrome.tabs.update(tabId, { url: blockUrl });
+            console.log(`[Watchdog] No dashboard open, reused tab for ${appId} (Reason: ${reason})`);
+        }
+    });
 }

@@ -33,8 +33,35 @@ if (fs.existsSync(publicPath)) {
 app.use(express.static(publicPath));
 
 // --- REST API Endpoints ---
-app.get('/', (req, res) => {
-    res.status(200).send('FocusFlow Server is running and ready to accept connections.');
+app.get('/api/limits/status/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        // 1. Get Focus Sessions
+        const focusRes = await pool.query(
+            'SELECT apps_blocked FROM focus_sessions WHERE user_id = $1 AND status = $2',
+            [userId, 'active']
+        );
+        const focusApps = focusRes.rows.length > 0 ? focusRes.rows[0].apps_blocked : [];
+
+        // 2. Get Limits & Usage
+        const statusRes = await pool.query(
+            'SELECT l.app_id, l.limit_mins, COALESCE(u.usage_secs, 0) as usage_secs ' +
+            'FROM app_limits l ' +
+            'LEFT JOIN usage_stats u ON l.user_id = u.user_id AND l.app_id = u.app_id AND u.date = CURRENT_DATE ' +
+            'WHERE l.user_id = $1',
+            [userId]
+        );
+
+        res.status(200).json({
+            focusActive: focusRes.rows.length > 0,
+            focusApps,
+            limits: statusRes.rows
+        });
+    } catch (err) {
+        console.error("Status Fetch Error:", err);
+        res.status(500).json({ error: "Failed to fetch status" });
+    }
 });
 
 app.post('/api/limits/extend', async (req, res) => {

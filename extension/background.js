@@ -31,11 +31,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 });
 
+let syncData = {
+    focusActive: false,
+    focusApps: [],
+    limits: []
+};
+
 async function syncWithBackend() {
     try {
         const response = await fetch(`${backendUrl}/api/limits/status/${USER_ID}`);
         if (response.ok) {
             const data = await response.json();
+
+            // Update local state
+            syncData = data;
 
             // Update local storage so popup can show last sync time
             chrome.storage.local.set({
@@ -44,7 +53,7 @@ async function syncWithBackend() {
                 syncData: data
             });
 
-            processSyncData(data);
+            console.log("Synced data:", data);
         } else {
             throw new Error("HTTP Error " + response.status);
         }
@@ -55,12 +64,6 @@ async function syncWithBackend() {
     }
 }
 
-function processSyncData(data) {
-    // Logic to determine which apps are blocked based on usage vs limits
-    // This will be expanded as we integrate more deeply
-    console.log("Synced data:", data);
-}
-
 // Simple blocking by Tab Monitoring
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     if (changeInfo.url) {
@@ -68,21 +71,40 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     }
 });
 
-const DISTRACTION_SITES = [
-    "instagram.com",
-    "facebook.com",
-    "twitter.com",
-    "x.com",
-    "youtube.com",
-    "tiktok.com",
-    "snapchat.com",
-    "reddit.com"
-];
+const APP_SITES = {
+    "instagram": ["instagram.com"],
+    "facebook": ["facebook.com"],
+    "twitter": ["twitter.com", "x.com"],
+    "youtube": ["youtube.com"],
+    "tiktok": ["tiktok.com"],
+    "snapchat": ["snapchat.com"],
+    "reddit": ["reddit.com"],
+    "whatsapp": ["whatsapp.com", "web.whatsapp.com"]
+};
 
 function checkAndBlockTab(tabId, url) {
-    const isDistraction = DISTRACTION_SITES.some(site => url.includes(site));
+    // 1. Never block the FocusFlow dashboard itself
+    if (url.includes("focusflow-app-two.vercel.app")) return;
 
-    if (isDistraction) {
+    // 2. Determine if the current URL belongs to a tracked app
+    let matchedAppId = null;
+    for (const [appId, domains] of Object.entries(APP_SITES)) {
+        if (domains.some(domain => url.includes(domain))) {
+            matchedAppId = appId;
+            break;
+        }
+    }
+
+    if (!matchedAppId) return;
+
+    // 3. Check Focus Session Blocking
+    const isBlockedByFocus = syncData.focusActive && syncData.focusApps.includes(matchedAppId);
+
+    // 4. Check Daily Limit Blocking
+    const appStatus = syncData.limits.find(l => l.app_id === matchedAppId);
+    const isBlockedByLimit = appStatus && appStatus.limit_mins > 0 && (appStatus.usage_secs / 60) >= appStatus.limit_mins;
+
+    if (isBlockedByFocus || isBlockedByLimit) {
         const blockUrl = `https://focusflow-app-two.vercel.app/`;
 
         // Search for an existing FocusFlow tab to reuse it
@@ -91,11 +113,11 @@ function checkAndBlockTab(tabId, url) {
                 // Focus the existing dashboard and close this distraction tab
                 chrome.tabs.update(tabs[0].id, { active: true });
                 chrome.tabs.remove(tabId);
-                console.log("Redirected to existing dashboard and closed distraction:", url);
+                console.log(`[Extension] Blocked ${matchedAppId} (Reason: ${isBlockedByFocus ? 'Focus' : 'Limit'})`);
             } else {
                 // No dashboard open: Update this tab to show the dashboard
                 chrome.tabs.update(tabId, { url: blockUrl });
-                console.log("No dashboard open, updated current tab to block page:", url);
+                console.log(`[Extension] No dashboard open, redirected ${matchedAppId} to block page`);
             }
         });
     }

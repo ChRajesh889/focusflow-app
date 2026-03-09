@@ -10,6 +10,7 @@
     ],
     "host_permissions": [
         "https://*.onrender.com/*",
+        "https://focusflow-app-two.vercel.app/*",
         "http://localhost:3001/*"
     ],
     "background": {

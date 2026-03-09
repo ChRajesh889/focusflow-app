@@ -33,9 +33,19 @@ chrome.runtime.onInstalled.addListener(() => {
 // Listen for messages from popup or Dashboard
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'sync' || request.action === 'force_check') {
+        // If data is provided directly (Fast Path from Dashboard), use it immediately
+        if (request.data) {
+            syncData = request.data;
+            console.log("[Watchdog] Received direct sync data from Dashboard:", syncData);
+            runWatchdog();
+            sendResponse({ success: true, source: 'payload' });
+            return;
+        }
+
+        // Otherwise fallback to backend fetch
         syncWithBackend().then(() => {
             if (request.action === 'force_check') runWatchdog();
-            sendResponse({ success: true });
+            sendResponse({ success: true, source: 'backend' });
         }).catch(err => {
             sendResponse({ success: false, error: err.message });
         });
@@ -51,7 +61,12 @@ let syncData = {
 
 async function syncWithBackend() {
     try {
-        const response = await fetch(`${backendUrl}/api/limits/status/${USER_ID}`);
+        console.log("[Watchdog] Syncing with backend:", backendUrl);
+        const response = await fetch(`${backendUrl}/api/limits/status/${USER_ID}`, {
+            mode: 'cors',
+            cache: 'no-cache'
+        });
+
         if (response.ok) {
             const data = await response.json();
             syncData = data;
@@ -64,23 +79,22 @@ async function syncWithBackend() {
 
             console.log("[Watchdog] Sync Success:", data);
 
-            // Immediately run watchdog after sync if focus is active
-            if (data.focusActive || data.limits.some(l => l.limit_mins > 0)) {
-                runWatchdog();
-            }
+            // Immediately run watchdog after sync
+            runWatchdog();
         } else {
             throw new Error("HTTP Error " + response.status);
         }
     } catch (err) {
-        chrome.storage.local.set({ lastSyncStatus: 'failed' });
+        chrome.storage.local.set({ lastSyncStatus: 'failed', lastError: err.message });
         console.error("[Watchdog] Sync failed:", err);
     }
 }
 
 function runWatchdog() {
     chrome.tabs.query({}, (tabs) => {
+        if (chrome.runtime.lastError) return;
         tabs.forEach(tab => {
-            if (tab.url) {
+            if (tab.id && tab.url) {
                 checkAndBlockTab(tab.id, tab.url);
             }
         });
@@ -96,14 +110,14 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 });
 
 const APP_SITES = {
-    "twitter": ["x.com", "twitter.com", "t.co"],
-    "instagram": ["instagram.com", "instagr.am"],
-    "facebook": ["facebook.com", "fb.com", "messenger.com", "facebook.net"],
-    "youtube": ["youtube.com", "youtu.be", "m.youtube.com", "googlevideo.com"],
+    "twitter": ["x.com", "twitter.com", "t.co", "abs.twimg.com"],
+    "instagram": ["instagram.com", "instagr.am", "cdninstagram.com"],
+    "facebook": ["facebook.com", "fb.com", "messenger.com", "facebook.net", "fbcdn.net"],
+    "youtube": ["youtube.com", "youtu.be", "m.youtube.com", "googlevideo.com", "youtube-nocookie.com"],
     "whatsapp": ["whatsapp.com", "whatsapp.net", "web.whatsapp.com"],
-    "snapchat": ["snapchat.com", "snap.com"],
-    "tiktok": ["tiktok.com", "vimeo.com"],
-    "reddit": ["reddit.com", "reddit.app.link", "redd.it"]
+    "snapchat": ["snapchat.com", "snap.com", "sc-static.net"],
+    "tiktok": ["tiktok.com", "vimeo.com", "tiktokv.com"],
+    "reddit": ["reddit.com", "reddit.app.link", "redd.it", "redditmedia.com", "redditstatic.com"]
 };
 
 function checkAndBlockTab(tabId, url) {
@@ -111,7 +125,7 @@ function checkAndBlockTab(tabId, url) {
     const lowerUrl = url.toLowerCase();
 
     // 1. Never block the FocusFlow dashboard or its variants
-    if (lowerUrl.includes("focusflow-app-two.vercel.app") || lowerUrl.includes("localhost")) return;
+    if (lowerUrl.includes("focusflow-app-two.vercel.app") || lowerUrl.includes("localhost") || lowerUrl.includes("chrome://")) return;
 
     let matchedAppId = null;
     for (const [appId, domains] of Object.entries(APP_SITES)) {
@@ -124,6 +138,8 @@ function checkAndBlockTab(tabId, url) {
     if (!matchedAppId) return;
 
     const isBlockedByFocus = syncData.focusActive && syncData.focusApps.includes(matchedAppId);
+
+    // Find app status in limits array (normalize app_id comparison)
     const appStatus = syncData.limits.find(l => l.app_id === matchedAppId);
     const isBlockedByLimit = appStatus && appStatus.limit_mins > 0 && (appStatus.usage_secs / 60) >= appStatus.limit_mins;
 
@@ -135,41 +151,45 @@ function checkAndBlockTab(tabId, url) {
 function forceBlockTab(tabId, appId, reason) {
     const blockUrl = `https://focusflow-app-two.vercel.app/`;
 
-    // Use a clearer set of patterns for identifying the dashboard
-    chrome.tabs.query({ url: "*://focusflow-app-two.vercel.app/*" }, (tabs) => {
-        if (chrome.runtime.lastError) return;
+    // Safe check for tab existence before removing
+    chrome.tabs.get(tabId, (tab) => {
+        if (chrome.runtime.lastError || !tab) return;
 
-        if (tabs.length > 0) {
-            const dashboardTab = tabs[0];
+        // Use a clearer set of patterns for identifying the dashboard
+        chrome.tabs.query({ url: "*://focusflow-app-two.vercel.app/*" }, (tabs) => {
+            if (chrome.runtime.lastError) return;
 
-            // Focus the dashboard tab
-            chrome.tabs.update(dashboardTab.id, { active: true }, () => {
-                if (chrome.runtime.lastError) console.warn("[Watchdog] Failed to focus dashboard tab:", chrome.runtime.lastError.message);
-            });
+            if (tabs.length > 0) {
+                const dashboardTab = tabs[0];
 
-            // Focus the dashboard window
-            chrome.windows.update(dashboardTab.windowId, { focused: true }, () => {
-                if (chrome.runtime.lastError) console.warn("[Watchdog] Failed to focus dashboard window:", chrome.runtime.lastError.message);
-            });
+                // Focus the dashboard tab
+                chrome.tabs.update(dashboardTab.id, { active: true }, () => {
+                    if (chrome.runtime.lastError) console.warn("[Watchdog] Failed to focus dashboard tab:", chrome.runtime.lastError.message);
+                });
 
-            // Close the distraction tab
-            chrome.tabs.remove(tabId, () => {
-                // It's common for this to fail if the tab was closed while we were processing
-                if (chrome.runtime.lastError) {
-                    console.info("[Watchdog] Tab already closed or couldn't be removed:", tabId);
-                } else {
-                    console.log(`[Watchdog] Closed ${appId} for ${reason} (Reflected to Dashboard)`);
-                }
-            });
-        } else {
-            // No dashboard open: Redirect this tab to the dashboard
-            chrome.tabs.update(tabId, { url: blockUrl }, () => {
-                if (chrome.runtime.lastError) {
-                    console.info("[Watchdog] Failed to redirect tab (likely already closed):", tabId);
-                } else {
-                    console.log(`[Watchdog] No dashboard open, reused tab for ${appId} (Reason: ${reason})`);
-                }
-            });
-        }
+                // Focus the dashboard window
+                chrome.windows.update(dashboardTab.windowId, { focused: true }, () => {
+                    if (chrome.runtime.lastError) console.warn("[Watchdog] Failed to focus dashboard window:", chrome.runtime.lastError.message);
+                });
+
+                // Close the distraction tab
+                chrome.tabs.remove(tabId, () => {
+                    if (chrome.runtime.lastError) {
+                        console.info("[Watchdog] Tab already closed or couldn't be removed:", tabId);
+                    } else {
+                        console.log(`[Watchdog] Closed ${appId} for ${reason} (Reflected to Dashboard)`);
+                    }
+                });
+            } else {
+                // No dashboard open: Redirect this tab to the dashboard
+                chrome.tabs.update(tabId, { url: blockUrl }, () => {
+                    if (chrome.runtime.lastError) {
+                        console.info("[Watchdog] Failed to redirect tab (likely already closed or invalid tabId):", tabId);
+                    } else {
+                        console.log(`[Watchdog] No dashboard open, reused tab for ${appId} (Reason: ${reason})`);
+                    }
+                });
+            }
+        });
     });
 }

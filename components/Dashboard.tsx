@@ -265,11 +265,25 @@ const Dashboard: React.FC<DashboardProps> = ({ isSoundEnabled, userProgress, onU
 
     // Helper to tell the Chrome Extension to re-sync immediately
     const signalExtensionSync = useCallback(() => {
+        // Prepare the sync data to send directly to the extension
+        // This acts as a "Fast Path" to bypass server fetch errors
+        const syncDataPayload = {
+            focusActive: isFocusing,
+            focusApps: focusApps,
+            limits: Object.entries(appLimits).map(([appId, limitMins]) => ({
+                app_id: appId,
+                limit_mins: limitMins,
+                usage_secs: appUsage[appId] || 0
+            }))
+        };
+
         // Dispatch a custom event that our extension's content script listens for
-        const event = new CustomEvent('focusflow-force-sync');
+        const event = new CustomEvent('focusflow-force-sync', {
+            detail: syncDataPayload
+        });
         window.dispatchEvent(event);
-        console.log("[FocusFlow] Dispatched sync signal to extension");
-    }, []);
+        console.log("[FocusFlow] Dispatched sync signal with payload to extension", syncDataPayload);
+    }, [isFocusing, focusApps, appLimits, appUsage]);
 
     useIdleTimer({
         onIdle: () => setIsIdle(true),

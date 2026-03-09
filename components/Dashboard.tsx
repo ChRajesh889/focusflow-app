@@ -257,9 +257,19 @@ const Dashboard: React.FC<DashboardProps> = ({ isSoundEnabled, userProgress, onU
             }, 1000);
         } else if (isFocusing && timeLeft <= 0) {
             handleFocusEnd(false);
+            // Trigger extension sync when focus ends
+            signalExtensionSync();
         }
         return () => { if (interval) clearInterval(interval); };
     }, [isFocusing, isIdle, timeLeft, handleFocusEnd]);
+
+    // Helper to tell the Chrome Extension to re-sync immediately
+    const signalExtensionSync = useCallback(() => {
+        // Dispatch a custom event that our extension's content script listens for
+        const event = new CustomEvent('focusflow-force-sync');
+        window.dispatchEvent(event);
+        console.log("[FocusFlow] Dispatched sync signal to extension");
+    }, []);
 
     useIdleTimer({
         onIdle: () => setIsIdle(true),
@@ -339,6 +349,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isSoundEnabled, userProgress, onU
         setAppLimits(prev => ({ ...prev, [appId]: limit }));
         socketRef.current?.emit('limit:update', { appId, limitMins: limit });
         updateRecentlyUsed(appId);
+        signalExtensionSync();
     };
 
     const handleRemoveApp = (appId: string) => {
@@ -350,9 +361,16 @@ const Dashboard: React.FC<DashboardProps> = ({ isSoundEnabled, userProgress, onU
     };
 
     const handleStartFocus = () => {
-        setTimeLeft(focusDuration);
-        setIsFocusing(true);
-        socketRef.current?.emit('session:start', { goal: focusGoal, duration: focusDuration, appsBlocked: focusApps });
+        if (focusApps.length > 0) {
+            setIsFocusing(true);
+            setTimeLeft(focusDuration);
+            socketRef.current?.emit('session:start', {
+                goal: focusGoal,
+                duration: focusDuration,
+                appsBlocked: focusApps
+            });
+            signalExtensionSync();
+        }
         if (isSoundEnabled) playSound('Bell');
     };
 

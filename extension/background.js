@@ -108,16 +108,26 @@ function checkAndBlockTab(tabId, url) {
         const blockUrl = `https://focusflow-app-two.vercel.app/`;
 
         // Search for an existing FocusFlow tab to reuse it
-        chrome.tabs.query({ url: "*://focusflow-app-two.vercel.app/*" }, (tabs) => {
+        // We use a broad pattern to catch variations of the URL
+        chrome.tabs.query({ url: ["*://focusflow-app-two.vercel.app/*", "*://focusflow-app-two.vercel.app*"] }, (tabs) => {
             if (tabs.length > 0) {
-                // Focus the existing dashboard and close this distraction tab
-                chrome.tabs.update(tabs[0].id, { active: true });
+                const dashboardTab = tabs[0];
+
+                // 1. Focus the tab in its window
+                chrome.tabs.update(dashboardTab.id, { active: true });
+
+                // 2. Focus the window itself so the user actually sees it
+                chrome.windows.update(dashboardTab.windowId, { focused: true });
+
+                // 3. Close the distraction tab
                 chrome.tabs.remove(tabId);
-                console.log(`[Extension] Blocked ${matchedAppId} (Reason: ${isBlockedByFocus ? 'Focus' : 'Limit'})`);
+
+                console.log(`[Extension] Redirected to existing dashboard (Reason: ${isBlockedByFocus ? 'Focus' : 'Limit'})`);
             } else {
-                // No dashboard open: Update this tab to show the dashboard
+                // No dashboard open: Redirect this tab to the dashboard
+                // This reuses the current tab instead of opening a new one
                 chrome.tabs.update(tabId, { url: blockUrl });
-                console.log(`[Extension] No dashboard open, redirected ${matchedAppId} to block page`);
+                console.log(`[Extension] No dashboard open, reused current tab for ${matchedAppId}`);
             }
         });
     }
